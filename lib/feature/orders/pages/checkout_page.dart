@@ -73,8 +73,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
       ref.read(lastOrderProvider.notifier).state = order;
       ref.invalidate(cartProvider); // cart is now empty on server
+      ref.invalidate(ordersProvider);
       if (mounted) {
-        context.go(AppRoutes.orderConfirmation);
+        context.go('${AppRoutes.orderConfirmation}?order_id=${order.id}');
       }
     } catch (e) {
       String message = 'Failed to place order. Please try again.';

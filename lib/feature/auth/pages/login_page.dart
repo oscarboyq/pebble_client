@@ -48,7 +48,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         ref.invalidate(cartProvider);
         ref.invalidate(wishlistProvider);
         if (mounted) {
-          if (context.canPop()) {
+          final destination = safeReturnPath(
+            GoRouterState.of(context).uri.queryParameters['from'],
+          );
+          if (destination != null) {
+            context.go(destination);
+          } else if (context.canPop()) {
             context.pop();
           } else {
             context.go(AppRoutes.dashboard);

@@ -47,6 +47,20 @@ abstract class AppRoutes {
   static const String writeReview = '/products/:slug/review';
 }
 
+String? safeReturnPath(String? value) {
+  if (value == null || !value.startsWith('/') || value.startsWith('//')) {
+    return null;
+  }
+  final uri = Uri.tryParse(value);
+  if (uri == null ||
+      uri.hasAuthority ||
+      uri.path == AppRoutes.login ||
+      uri.path == AppRoutes.register) {
+    return null;
+  }
+  return uri.toString();
+}
+
 final appRouter = GoRouter(
   initialLocation: AppRoutes.dashboard,
   errorBuilder: (context, state) =>
@@ -55,7 +69,10 @@ final appRouter = GoRouter(
     final token = await StorageService.getAccessToken();
     final loc = state.matchedLocation;
     final isOnAuth = loc == AppRoutes.login || loc == AppRoutes.register;
-    if (token != null && isOnAuth) return AppRoutes.dashboard;
+    if (token != null && isOnAuth) {
+      return safeReturnPath(state.uri.queryParameters['from']) ??
+          AppRoutes.dashboard;
+    }
 
     final protectedPrefixes = [
       AppRoutes.checkout,
@@ -63,7 +80,9 @@ final appRouter = GoRouter(
       AppRoutes.profile,
     ];
     final isProtected = protectedPrefixes.any((p) => loc.startsWith(p));
-    if (token == null && isProtected) return AppRoutes.login;
+    if (token == null && isProtected) {
+      return '${AppRoutes.login}?from=${Uri.encodeComponent(state.uri.toString())}';
+    }
 
     return null;
   },
@@ -96,7 +115,9 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.orderConfirmation,
-      builder: (context, state) => const OrderConfirmationPage(),
+      builder: (context, state) => OrderConfirmationPage(
+        orderId: int.tryParse(state.uri.queryParameters['order_id'] ?? ''),
+      ),
     ),
 
     // ── Orders (no shell — pushed from profile / confirmation) ───

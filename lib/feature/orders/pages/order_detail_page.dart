@@ -7,6 +7,8 @@ import 'package:pebble_type/core/theme/app_text_styles.dart';
 import 'package:pebble_type/core/services/order_service.dart';
 import 'package:pebble_type/feature/orders/models/order_model.dart';
 import 'package:pebble_type/feature/orders/widgets/order_status_badge.dart';
+import 'package:pebble_type/feature/orders/widgets/order_tracking_timeline.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class OrderDetailPage extends StatefulWidget {
   /// Pre-loaded order (used as a cache when navigating from the list).
@@ -28,30 +30,35 @@ class OrderDetailPage extends StatefulWidget {
 class _OrderDetailPageState extends State<OrderDetailPage> {
   OrderModel? _order;
   bool _loading = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _order = widget.order;
-    if (_order == null) _load();
+    _load();
   }
 
   Future<void> _load() async {
+    final id = widget.orderId ?? widget.order!.id;
     setState(() {
       _loading = true;
+      _error = null;
     });
     try {
-      final order = await OrderService.getOrder(widget.orderId!);
+      final order = await OrderService.getOrder(id);
       if (mounted) {
         setState(() {
           _order = order;
           _loading = false;
+          _error = null;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
           _loading = false;
+          _error = 'Could not refresh this order. Try again.';
         });
       }
     }
@@ -60,7 +67,14 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   @override
   Widget build(BuildContext context) {
     final order = _order;
-    if (order != null) return _OrderDetailView(order: order);
+    if (order != null) {
+      return _OrderDetailView(
+        order: order,
+        onRefresh: _load,
+        refreshing: _loading,
+        error: _error,
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -102,7 +116,15 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
 
 class _OrderDetailView extends StatelessWidget {
   final OrderModel order;
-  const _OrderDetailView({required this.order});
+  final Future<void> Function() onRefresh;
+  final bool refreshing;
+  final String? error;
+  const _OrderDetailView({
+    required this.order,
+    required this.onRefresh,
+    required this.refreshing,
+    this.error,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -121,118 +143,152 @@ class _OrderDetailView extends StatelessWidget {
             color: AppColors.textPrimary,
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh order status',
+            onPressed: refreshing ? null : onRefresh,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(height: 1, color: AppColors.border),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppDimensions.spacingMd),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _Section(
-              title: 'Status',
-              child: OrderStatusBadge(status: order.status),
-            ),
-            const SizedBox(height: AppDimensions.spacingMd),
-
-            // ── Tracking / Shipping card ─────────────────────────
-            if (order.hasTracking) ...[
-              _TrackingCard(order: order),
-              const SizedBox(height: AppDimensions.spacingMd),
-            ],
-
-            _Section(
-              title: 'Shipping Address',
+      body: RefreshIndicator(
+        onRefresh: onRefresh,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(AppDimensions.spacingMd),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(order.fullName, style: AppTextStyles.bodyMd),
-                  Text(
-                    order.phone,
-                    style: AppTextStyles.bodyMd.copyWith(
-                      color: AppColors.textSecondary,
+                  if (refreshing) const LinearProgressIndicator(),
+                  if (error != null) ...[
+                    Text(
+                      error!,
+                      style: const TextStyle(color: AppColors.error),
                     ),
+                    const SizedBox(height: AppDimensions.spacingMd),
+                  ],
+                  _Section(
+                    title: 'Status',
+                    child: OrderStatusBadge(status: order.status),
                   ),
-                  const SizedBox(height: AppDimensions.spacingXm),
-                  Text(order.addressLine1, style: AppTextStyles.bodyMd),
-                  if (order.addressLine2.isNotEmpty)
-                    Text(order.addressLine2, style: AppTextStyles.bodyMd),
-                  Text(
-                    '${order.city}, ${order.state} ${order.postalCode}',
-                    style: AppTextStyles.bodyMd,
-                  ),
-                  Text(order.country, style: AppTextStyles.bodyMd),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spacingMd),
-            _Section(
-              title: 'Items',
-              child: Column(
-                children: order.items
-                    .map((item) => _OrderItemRow(item: item))
-                    .toList(),
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spacingMd),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppDimensions.spacingMd),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(AppDimensions.radiusLg),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Subtotal'),
-                      Text('\$${order.subtotalAmount.toStringAsFixed(2)}'),
-                    ],
-                  ),
-                  if (order.discountAmount > 0) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  const SizedBox(height: AppDimensions.spacingMd),
+
+                  OrderTrackingTimeline(order: order),
+                  const SizedBox(height: AppDimensions.spacingMd),
+
+                  // ── Tracking / Shipping card ─────────────────────────
+                  if (order.status == 'shipped' ||
+                      order.status == 'delivered') ...[
+                    _TrackingCard(order: order),
+                    const SizedBox(height: AppDimensions.spacingMd),
+                  ],
+
+                  _Section(
+                    title: 'Shipping Address',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            order.appliedOfferName.isEmpty
-                                ? 'Discount'
-                                : order.appliedOfferName,
-                            overflow: TextOverflow.ellipsis,
+                        Text(order.fullName, style: AppTextStyles.bodyMd),
+                        Text(
+                          order.phone,
+                          style: AppTextStyles.bodyMd.copyWith(
+                            color: AppColors.textSecondary,
                           ),
                         ),
-                        Text('-\$${order.discountAmount.toStringAsFixed(2)}'),
+                        const SizedBox(height: AppDimensions.spacingXm),
+                        Text(order.addressLine1, style: AppTextStyles.bodyMd),
+                        if (order.addressLine2.isNotEmpty)
+                          Text(order.addressLine2, style: AppTextStyles.bodyMd),
+                        Text(
+                          '${order.city}, ${order.state} ${order.postalCode}',
+                          style: AppTextStyles.bodyMd,
+                        ),
+                        Text(order.country, style: AppTextStyles.bodyMd),
                       ],
                     ),
-                  ],
-                  const Divider(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Total',
-                        style: AppTextStyles.bodyLg.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingMd),
+                  _Section(
+                    title: 'Items',
+                    child: Column(
+                      children: order.items
+                          .map((item) => _OrderItemRow(item: item))
+                          .toList(),
+                    ),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingMd),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppDimensions.spacingMd),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(
+                        AppDimensions.radiusLg,
                       ),
-                      Text(
-                        '\$${order.totalAmount.toStringAsFixed(2)}',
-                        style: AppTextStyles.bodyLg.copyWith(
-                          fontWeight: FontWeight.w600,
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Subtotal'),
+                            Text(
+                              '\$${order.subtotalAmount.toStringAsFixed(2)}',
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        if (order.discountAmount > 0) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  order.appliedOfferName.isEmpty
+                                      ? 'Discount'
+                                      : order.appliedOfferName,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Text(
+                                '-\$${order.discountAmount.toStringAsFixed(2)}',
+                              ),
+                            ],
+                          ),
+                        ],
+                        const Divider(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Total',
+                              style: AppTextStyles.bodyLg.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              '\$${order.totalAmount.toStringAsFixed(2)}',
+                              style: AppTextStyles.bodyLg.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -293,7 +349,8 @@ class _OrderItemRow extends StatelessWidget {
                       fit: BoxFit.cover,
                       cacheWidth: 150,
                       gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) => _placeholder(),
+                      errorBuilder: (context, error, stackTrace) =>
+                          _placeholder(),
                     )
                   : _placeholder(),
             ),
@@ -349,7 +406,7 @@ class _OrderItemRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tracking Card — shown when order has been shipped with a tracking number
+// Store-managed shipping information. Carrier scan updates are not available.
 // ─────────────────────────────────────────────────────────────────────────────
 const _carrierNames = {
   'fedex': 'FedEx',
@@ -363,6 +420,25 @@ const _carrierNames = {
 class _TrackingCard extends StatelessWidget {
   final OrderModel order;
   const _TrackingCard({required this.order});
+
+  Future<void> _openCarrier(BuildContext context) async {
+    final uri = Uri.tryParse(order.trackingUrl);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return;
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // Keep the tracking number available to copy if the device cannot open links.
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open the carrier link. Copy the tracking number instead.',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -402,7 +478,9 @@ class _TrackingCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Your Order Is On Its Way',
+                  order.status == 'delivered'
+                      ? 'Your Order Was Delivered'
+                      : 'Your Order Is On Its Way',
                   style: AppTextStyles.bodyMd.copyWith(
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF1565C0),
@@ -517,6 +595,23 @@ class _TrackingCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ),
+                ] else ...[
+                  const SizedBox(height: AppDimensions.spacingMd),
+                  Text(
+                    'A tracking number has not been added yet. Check back for an update.',
+                    style: AppTextStyles.bodyMd.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+
+                if (order.trackingUrl.isNotEmpty) ...[
+                  const SizedBox(height: AppDimensions.spacingMd),
+                  OutlinedButton.icon(
+                    onPressed: () => _openCarrier(context),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Track with carrier'),
                   ),
                 ],
 

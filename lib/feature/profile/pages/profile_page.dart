@@ -135,6 +135,23 @@ class ProfilePage extends ConsumerWidget {
               ),
               const SizedBox(height: AppDimensions.spacingLg),
 
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push(AppRoutes.orders),
+                  icon: const Icon(Icons.local_shipping_outlined),
+                  label: const Text('My Orders & Tracking'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textPrimary,
+                    side: const BorderSide(color: AppColors.border),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppDimensions.spacingMd,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppDimensions.spacingSm),
+
               // Change password
               SizedBox(
                 width: double.infinity,

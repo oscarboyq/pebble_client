@@ -6,6 +6,8 @@ import 'package:pebble_type/feature/orders/models/order_model.dart';
 
 final lastOrderProvider = StateProvider<OrderModel?>((ref) => null);
 
-final ordersProvider = FutureProvider<List<OrderModel>>((ref) async {
+final ordersProvider = FutureProvider.autoDispose<List<OrderModel>>((
+  ref,
+) async {
   return await OrderService.getOrders();
 });

@@ -1,5 +1,24 @@
 import 'package:pebble_type/feature/products/models/product_model.dart';
 
+class OrderStatusEventModel {
+  final String status;
+  final DateTime occurredAt;
+  final String note;
+
+  const OrderStatusEventModel({
+    required this.status,
+    required this.occurredAt,
+    this.note = '',
+  });
+
+  factory OrderStatusEventModel.fromJson(Map<String, dynamic> json) =>
+      OrderStatusEventModel(
+        status: json['status'] as String? ?? 'pending',
+        occurredAt: DateTime.parse(json['occurred_at'] as String),
+        note: json['note'] as String? ?? '',
+      );
+}
+
 class OrderItemModel {
   final int id;
   final ProductModel product;
@@ -54,10 +73,12 @@ class OrderModel {
   final String appliedOfferName;
   final List<OrderItemModel> items;
   final DateTime createdAt;
+  final List<OrderStatusEventModel> statusEvents;
 
   // Shipping dispatch fields
   final String carrier;
   final String trackingNumber;
+  final String trackingUrl;
   final String handledBy;
   final DateTime? estimatedDelivery;
   final String shippingNotes;
@@ -80,8 +101,10 @@ class OrderModel {
     this.appliedOfferName = '',
     required this.items,
     required this.createdAt,
+    this.statusEvents = const [],
     this.carrier = '',
     this.trackingNumber = '',
+    this.trackingUrl = '',
     this.handledBy = '',
     this.estimatedDelivery,
     this.shippingNotes = '',
@@ -114,8 +137,15 @@ class OrderModel {
           .map((e) => OrderItemModel.fromJson(e as Map<String, dynamic>))
           .toList(),
       createdAt: DateTime.parse(json['created_at'] as String),
+      statusEvents: (json['status_events'] as List? ?? const [])
+          .map(
+            (event) =>
+                OrderStatusEventModel.fromJson(event as Map<String, dynamic>),
+          )
+          .toList(),
       carrier: json['carrier'] as String? ?? '',
       trackingNumber: json['tracking_number'] as String? ?? '',
+      trackingUrl: json['tracking_url'] as String? ?? '',
       handledBy: json['handled_by'] as String? ?? '',
       estimatedDelivery: json['estimated_delivery'] != null
           ? DateTime.tryParse(json['estimated_delivery'] as String)

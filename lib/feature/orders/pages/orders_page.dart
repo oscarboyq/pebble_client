@@ -84,11 +84,24 @@ class OrdersPage extends ConsumerWidget {
           }
           return RefreshIndicator(
             color: AppColors.primary,
-            onRefresh: () async => ref.invalidate(ordersProvider),
+            onRefresh: () => ref.refresh(ordersProvider.future),
             child: ListView.separated(
               padding: EdgeInsets.all(AppDimensions.spacingMd),
-              itemBuilder: (_, index) => _OrderCard(order: orders[index]),
-              separatorBuilder: (_, __) =>
+              itemBuilder: (_, index) => Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: _OrderCard(
+                    order: orders[index],
+                    onOpen: () async {
+                      await context.push(
+                        '${AppRoutes.orderDetail}/${orders[index].id}',
+                      );
+                      if (context.mounted) ref.invalidate(ordersProvider);
+                    },
+                  ),
+                ),
+              ),
+              separatorBuilder: (context, index) =>
                   const SizedBox(height: AppDimensions.spacingMd),
               itemCount: orders.length,
             ),
@@ -101,14 +114,14 @@ class OrdersPage extends ConsumerWidget {
 
 class _OrderCard extends StatelessWidget {
   final OrderModel order;
-  const _OrderCard({required this.order});
+  final VoidCallback onOpen;
+  const _OrderCard({required this.order, required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        context.push('${AppRoutes.orderDetail}/${order.id}', extra: order);
-      },
+    return InkWell(
+      onTap: onOpen,
+      borderRadius: BorderRadius.circular(AppDimensions.radiusLg),
       child: Container(
         padding: EdgeInsets.all(AppDimensions.spacingMd),
         decoration: BoxDecoration(
@@ -155,6 +168,17 @@ class _OrderCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: AppDimensions.spacingMd),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'Track order  →',
+                style: AppTextStyles.bodyMd.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ],
         ),
